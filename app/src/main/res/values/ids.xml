@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <item name="open_button" type="id">Open</item>
+    <item name="file_list" type="id">File List</item>
+</resources>
