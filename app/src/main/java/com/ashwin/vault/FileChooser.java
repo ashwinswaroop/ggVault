@@ -7,6 +7,7 @@ import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.database.Cursor;
 import android.net.Uri;
+import android.os.AsyncTask;
 import android.os.Build;
 import android.os.Environment;
 import android.provider.OpenableColumns;
@@ -20,6 +21,7 @@ import android.widget.AdapterView;
 import android.widget.ArrayAdapter;
 import android.widget.Button;
 import android.widget.ListView;
+import android.widget.TextView;
 import android.widget.Toast;
 
 import com.amazonaws.auth.BasicAWSCredentials;
@@ -38,7 +40,9 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
+import java.io.OutputStream;
 import java.io.OutputStreamWriter;
+import java.net.URL;
 import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
 import java.security.AlgorithmParameters;
@@ -47,15 +51,23 @@ import java.security.InvalidAlgorithmParameterException;
 import java.security.InvalidKeyException;
 import java.security.NoSuchAlgorithmException;
 import java.security.SecureRandom;
+import java.security.spec.AlgorithmParameterSpec;
+import java.security.spec.KeySpec;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.concurrent.ExecutionException;
 
 import javax.crypto.BadPaddingException;
 import javax.crypto.Cipher;
+import javax.crypto.CipherInputStream;
+import javax.crypto.CipherOutputStream;
 import javax.crypto.IllegalBlockSizeException;
 import javax.crypto.KeyGenerator;
 import javax.crypto.NoSuchPaddingException;
 import javax.crypto.SecretKey;
+import javax.crypto.SecretKeyFactory;
+import javax.crypto.spec.DESKeySpec;
+import javax.crypto.spec.DESedeKeySpec;
 import javax.crypto.spec.IvParameterSpec;
 import javax.crypto.spec.SecretKeySpec;
 
@@ -71,10 +83,12 @@ public class FileChooser extends AppCompatActivity {
     private static final int OPEN_DOCUMENT_REQUEST = 1;
     private static final int MY_PERMISSIONS_REQUEST_READ_EXTERNAL_STORAGE = 2;
     private static final int MY_PERMISSIONS_REQUEST_READ_EXTERNAL_STORAGE2 = 5;
-    private static final int OPEN_FILE_REQUEST = 3;
+    private static final int OPEN_PDF_REQUEST = 3;
     private static final int MY_PERMISSIONS_REQUEST_WRITE_EXTERNAL_STORAGE = 4;
     public static HashMap<String,SecretKeySpec> key = new HashMap<String,SecretKeySpec>();
     public static HashMap<String,IvParameterSpec> ivMap = new HashMap<String,IvParameterSpec>();
+    public static ByteBuffer ciphertext;
+    public static ByteBuffer plaintext;
 
     @RequiresApi(api = Build.VERSION_CODES.M)
     @Override
@@ -90,6 +104,13 @@ public class FileChooser extends AppCompatActivity {
             }
         });
         ArrayList<String> files = getFileList();
+        for(String file : files){
+            if(!file.endsWith(".gg")){
+                File f = new File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOCUMENTS)+"/"+file);
+                f.delete();
+            }
+        }
+        files = getFileList();
         ArrayAdapter<String> itemsAdapter =
                 new ArrayAdapter<>(this, android.R.layout.simple_list_item_1, files);
         final ListView listView = (ListView) findViewById(R.id.file_list);
@@ -99,31 +120,10 @@ public class FileChooser extends AppCompatActivity {
             public void onItemClick(AdapterView<?> parent, View view, int position, long id) {
                 String item = (String) listView.getItemAtPosition(position);
                 Log.d("item",item);
-                BasicAWSCredentials creds = new BasicAWSCredentials("AKIAJSHAOQIPWO3JZUXQ", "E5YWncNcYgDBjykpWa9KT9DMmUbNukK6VTXiv2aE");
-                AWSKMSClient kms = new AWSKMSClient(creds);
-                File pdfFile = new File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOCUMENTS)+ "/" + item);
-                byte[] encryptedBytes = null;
-                ByteBuffer encryptedByteBuffer = null;
-                try {
-                    encryptedBytes = FileUtils.readFileToByteArray(pdfFile);
-                    encryptedByteBuffer = ByteBuffer.wrap(encryptedBytes);
-                } catch (IOException e) {
-                    e.printStackTrace();
-                }
-                DecryptRequest req = new DecryptRequest().withCiphertextBlob(encryptedByteBuffer);
-                ByteBuffer decryptedByteBuffer = kms.decrypt(req).getPlaintext();
-                File decryptedPdfFile = new File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOCUMENTS)+ "/temp.pdf");
-                FileChannel wChannel = null;
-                try {
-                    wChannel = new FileOutputStream(decryptedPdfFile, false).getChannel();
-                    wChannel.write(decryptedByteBuffer);
-                    wChannel.close();
-                } catch (FileNotFoundException e) {
-                    e.printStackTrace();
-                } catch (IOException e) {
-                    e.printStackTrace();
-                }
 
+                decryptFile(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOCUMENTS) + "/" + item,Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOCUMENTS) + "/key.gg");
+                String baseFileName = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOCUMENTS) + "/" + item;
+                File decryptedPdfFile = new File(baseFileName.substring(0, baseFileName.length() - 3));
                 if(decryptedPdfFile.exists()) {
                     Uri path = Uri.fromFile(decryptedPdfFile);
                     Intent intent = new Intent(Intent.ACTION_VIEW);
@@ -148,6 +148,13 @@ public class FileChooser extends AppCompatActivity {
         //File f = new File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOCUMENTS)+ "/temp.pdf");
         //f.delete();
         ArrayList<String> files = getFileList();
+        for(String file : files){
+            if(!file.endsWith(".gg")){
+                File f = new File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOCUMENTS)+"/"+file);
+                f.delete();
+            }
+        }
+        files = getFileList();
         ArrayAdapter<String> itemsAdapter =
                 new ArrayAdapter<>(this, android.R.layout.simple_list_item_1, files);
         final ListView listView = (ListView) findViewById(R.id.file_list);
@@ -157,31 +164,10 @@ public class FileChooser extends AppCompatActivity {
             public void onItemClick(AdapterView<?> parent, View view, int position, long id) {
                 String item = (String) listView.getItemAtPosition(position);
                 Log.d("item",item);
-                BasicAWSCredentials creds = new BasicAWSCredentials("AKIAJSHAOQIPWO3JZUXQ", "E5YWncNcYgDBjykpWa9KT9DMmUbNukK6VTXiv2aE");
-                AWSKMSClient kms = new AWSKMSClient(creds);
-                File pdfFile = new File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOCUMENTS)+ "/" + item);
-                byte[] encryptedBytes = null;
-                ByteBuffer encryptedByteBuffer = null;
-                try {
-                    encryptedBytes = FileUtils.readFileToByteArray(pdfFile);
-                    encryptedByteBuffer = ByteBuffer.wrap(encryptedBytes);
-                } catch (IOException e) {
-                    e.printStackTrace();
-                }
-                DecryptRequest req = new DecryptRequest().withCiphertextBlob(encryptedByteBuffer);
-                ByteBuffer decryptedByteBuffer = kms.decrypt(req).getPlaintext();
-                File decryptedPdfFile = new File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOCUMENTS)+ "/temp.pdf");
-                FileChannel wChannel = null;
-                try {
-                    wChannel = new FileOutputStream(decryptedPdfFile, false).getChannel();
-                    wChannel.write(decryptedByteBuffer);
-                    wChannel.close();
-                } catch (FileNotFoundException e) {
-                    e.printStackTrace();
-                } catch (IOException e) {
-                    e.printStackTrace();
-                }
 
+                decryptFile(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOCUMENTS) + "/" + item,Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOCUMENTS) + "/key.gg");
+                String baseFileName = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOCUMENTS) + "/" + item;
+                File decryptedPdfFile = new File(baseFileName.substring(0, baseFileName.length() - 3));
                 if(decryptedPdfFile.exists()) {
                     Uri path = Uri.fromFile(decryptedPdfFile);
                     Intent intent = new Intent(Intent.ACTION_VIEW);
@@ -197,7 +183,6 @@ public class FileChooser extends AppCompatActivity {
                 }
             }
         });
-
     }
 
     private void openDocument() {
@@ -241,25 +226,34 @@ public class FileChooser extends AppCompatActivity {
                     // app-defined int constant
 
                 }
-
-                Log.d("gg", "INSIDE");
                 inputStream = getContentResolver().openInputStream(uri);
-                BasicAWSCredentials creds = new BasicAWSCredentials("AKIAJSHAOQIPWO3JZUXQ", "E5YWncNcYgDBjykpWa9KT9DMmUbNukK6VTXiv2aE");
-                AWSKMSClient kms = new AWSKMSClient(creds);
-                String keyId = "arn:aws:kms:us-east-1:147457270036:key/52f6f49d-8bfd-4ec5-8c5e-9085c4acc583";
-                EncryptRequest req = new EncryptRequest().withKeyId(keyId).withPlaintext(ByteBuffer.wrap(IOUtils.toByteArray(inputStream)));
-                ByteBuffer ciphertext = kms.encrypt(req).getCiphertextBlob();
                 File f = new File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOCUMENTS) + "/" + getFileName(uri));
-                FileChannel wChannel = new FileOutputStream(f, false).getChannel();
-                wChannel.write(ciphertext);
-                wChannel.close();
+                FileOutputStream fos = new FileOutputStream(f);
+                byte[] buffer = new byte[1024];
+
+                int length;
+                while ((length = inputStream.read(buffer)) > 0){
+                    fos.write(buffer, 0, length);
+                }
+                fos.close();
+                inputStream.close();
+                Log.d("gg", "INSIDE");
+                writeKey(56,Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOCUMENTS) + "/key.gg","DES");
+                encryptFile(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOCUMENTS) + "/" + getFileName(uri),Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOCUMENTS) + "/key.gg");
+                f.delete();
             } catch (FileNotFoundException e) {
                 e.printStackTrace();
             } catch (IOException e) {
                 e.printStackTrace();
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+            } catch (ExecutionException e) {
+                e.printStackTrace();
+            } catch (Exception e) {
+                e.printStackTrace();
             }
         /*
-        else if(requestCode==OPEN_FILE_REQUEST){
+        else if(requestCode==OPEN_PDF_REQUEST){
             Uri uri = data.getData();
             StringBuilder text = new StringBuilder();
             InputStream inputStream = null;
@@ -375,4 +369,127 @@ public class FileChooser extends AppCompatActivity {
         return fileInBytes;
     }
 
+
+
+    private static void encryptFile(String fileName, String keyName)
+    {
+        String original = fileName ;
+        String encrypted = fileName+".gg";
+        Cipher encrypt;
+        byte[] initialization_vector = { 22, 33, 11, 44, 55, 99, 66, 77 };
+        try
+        {
+            SecretKey secret_key = readKey(keyName, "DES");
+            AlgorithmParameterSpec alogrithm_specs = new IvParameterSpec(initialization_vector);
+            encrypt = Cipher.getInstance("DES/CBC/PKCS5Padding");
+            encrypt.init(Cipher.ENCRYPT_MODE, secret_key, alogrithm_specs);
+            encrypt(new FileInputStream(original), new FileOutputStream(encrypted),encrypt);
+            System.out.println("End of Encryption procedure!");
+        }
+        catch(Exception e)
+        {
+            System.out.println(e.toString());
+        }
+    }
+    private static void decryptFile(String fileName, String keyName)
+    {
+        String original = fileName.substring(0, fileName.length() - 3);
+        String encrypted = fileName ;
+        Cipher decrypt;
+        byte[] initialization_vector = { 22, 33, 11, 44, 55, 99, 66, 77 };
+        try
+        {
+            SecretKey secret_key = readKey(keyName, "DES");
+            AlgorithmParameterSpec alogrithm_specs = new IvParameterSpec(initialization_vector);
+
+            decrypt = Cipher.getInstance("DES/CBC/PKCS5Padding");
+            decrypt.init(Cipher.DECRYPT_MODE, secret_key, alogrithm_specs);
+            decrypt(new FileInputStream(encrypted), new FileOutputStream(original),decrypt);
+            System.out.println("End of Decryption procedure!");
+        }
+        catch(Exception e)
+        {
+            System.out.println(e.toString());
+        }
+    }
+
+    private static void encrypt(InputStream input, OutputStream output, Cipher encrypt) throws IOException {
+        output = new CipherOutputStream(output, encrypt);
+        writeBytes(input, output);
+    }
+
+    private static void decrypt(InputStream input, OutputStream output,Cipher decrypt) throws IOException {
+
+        input = new CipherInputStream(input, decrypt);
+        writeBytes(input, output);
+    }
+
+    private static void writeBytes(InputStream input, OutputStream output) throws IOException {
+        byte[] writeBuffer = new byte[1024];
+        int readBytes = 0;
+        while ((readBytes = input.read(writeBuffer)) >= 0) {
+            output.write(writeBuffer, 0, readBytes);
+        }
+        output.close();
+        input.close();
+    }
+
+    private static void writeKey(int keySize, String output,String algorithm) throws Exception {
+        KeyGenerator kg = KeyGenerator.getInstance(algorithm);
+        kg.init(keySize);
+        System.out.println();
+        System.out.println("KeyGenerator Object Info: ");
+        System.out.println("Algorithm = " + kg.getAlgorithm());
+        System.out.println("Provider = " + kg.getProvider());
+        System.out.println("Key Size = " + keySize);
+        System.out.println("toString = " + kg.toString());
+
+        SecretKey ky = kg.generateKey();
+        byte[] kb;
+        FileOutputStream fos = new FileOutputStream(output);
+        kb = ky.getEncoded();
+        fos.write(kb);
+
+        System.out.println();
+        System.out.println("SecretKey Object Info: ");
+        System.out.println("Algorithm = " + ky.getAlgorithm());
+        System.out.println("Saved File = " + output);
+        System.out.println("Size = " + kb.length);
+        System.out.println("Format = " + ky.getFormat());
+        System.out.println("toString = " + ky.toString());
+    }
+    private static SecretKey readKey(String input, String algorithm)throws Exception {
+        FileInputStream fis = new FileInputStream(input);
+        int kl = fis.available();
+        byte[] kb = new byte[kl];
+        fis.read(kb);
+        fis.close();
+        KeySpec ks = null;
+        SecretKey ky = null;
+        SecretKeyFactory kf = null;
+        if (algorithm.equalsIgnoreCase("DES")) {
+            ks = new DESKeySpec(kb);
+            kf = SecretKeyFactory.getInstance("DES");
+            ky = kf.generateSecret(ks);
+        } else if (algorithm.equalsIgnoreCase("DESede")) {
+            ks = new DESedeKeySpec(kb);
+            kf = SecretKeyFactory.getInstance("DESede");
+            ky = kf.generateSecret(ks);
+        } else {
+            ks = new SecretKeySpec(kb, algorithm);
+            ky = new SecretKeySpec(kb, algorithm);
+        }
+        /*
+        System.out.println();
+        System.out.println("KeySpec Object Info: ");
+        System.out.println("Saved File = " + fl);
+        System.out.println("Length = " + kb.length);
+        System.out.println("toString = " + ks.toString());
+        System.out.println();
+        System.out.println("SecretKey Object Info: ");
+        System.out.println("Algorithm = " + ky.getAlgorithm());
+        System.out.println("toString = " + ky.toString());
+        */
+        return ky;
+    }
 }
