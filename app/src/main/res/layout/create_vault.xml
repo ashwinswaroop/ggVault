@@ -1,0 +1,31 @@
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:orientation="vertical"
+    android:layout_width="wrap_content"
+    android:layout_height="wrap_content"
+
+    android:id = "@+id/create_vault">
+
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="50dp"
+        android:gravity="center"
+        android:background="@drawable/action_bar"
+        android:textColor="#ffffff"
+        android:text="Create new ggVault"/>
+
+    <EditText
+        android:id="@+id/create_password"
+        android:inputType="textPassword"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:maxLength="25"
+        android:ems="12"
+        android:layout_marginBottom="20dp"
+        android:layout_marginLeft="20dp"
+        android:layout_marginTop="20dp"
+        style="@android:style/Widget.Material.EditText"
+        android:fontFamily="sans-serif"
+        android:hint="Password"
+        tools:targetApi="lollipop" />
+</LinearLayout>

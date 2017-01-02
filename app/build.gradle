@@ -40,20 +40,6 @@ dependencies {
     })
     compile 'com.android.support:appcompat-v7:25.0.0'
     compile group: 'commons-io', name: 'commons-io', version: '2.5'
-
-    /*
-    compile (group: 'com.amazonaws', name: 'aws-java-sdk-kms', version: '1.11.68'){
-        exclude group: 'commons-logging'
-        exclude group: 'org.apache.httpcomponents', module: 'httpclient'
-        exclude group: 'org.apache.httpcomponents', module: 'httpclient-android'
-    }
-
-    compile group: 'org.apache.httpcomponents', name: 'httpclient-android', version: '4.3.5.1'
-    */
-    compile group: 'com.amazonaws', name: 'aws-android-sdk-core', version: '2.2.+'
-    compile group: 'com.amazonaws', name: 'aws-android-sdk-s3', version: '2.2.+'
-    compile group: 'com.amazonaws', name: 'aws-android-sdk-ddb', version: '2.2.+'
-    compile group: 'com.amazonaws', name: 'aws-android-sdk-kms', version: '2.2.+'
-
+    compile 'com.android.support:design:25.0.0'
     testCompile 'junit:junit:4.12'
 }
